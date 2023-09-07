@@ -7,6 +7,52 @@ three-dimensional `NumPy` array or as a Python function ``f(x, y, z)``.
 `PyMCubes` also provides functions to export the results of the marching cubes
 in a number of mesh file formats.
 
+## New!
+
+### 安装
+作为fork项目，请不要使用直接的pip安装，请执行
+```
+$ pip install -e .
+```
+此外，本项目需要编译CUDA库
+```
+bash build_cuda.sh
+```
+
+### 子模块声明(ignorable)
+作为国内的开发者，我使用了如下的镜像链接。如果有需要可以在`.gitsubmodule`中进行修改
+```
+git submodule add https://gitee.com/mysticalwing/pybind11  pybind11
+```
+
+### new feature
+
+#### 朴素的CUDA加速
+我们为mcubes提供了上层的CUDA加速函数，目前只支持`numpy`数组作为输入。你可以将
+```
+vertices, triangles = mcubes.marching_cubes(u, 0)
+```
+替换为
+```
+vertices, triangles = lib.mcubes_cu.marching_cubes(u, 0)
+```
+来调用该功能
+
+#### PBM的CUDA加速
+
+基于论文*Parallel Marching Blocks: A Practical Isosurfacing Algorithm for Large Data on Many-Core Architectures*对Marching Cubes算法进行加速
+
+我们为mcubes提供了上层的CUDA加速函数，目前只支持`numpy`数组作为输入。你可以将
+```
+vertices, triangles = mcubes.marching_cubes(u, 0)
+```
+替换为
+```
+vertices, triangles = lib.mcubes_cu.PBM(u, 0)
+```
+来调用该功能
+
+
 ## Installation
 
 Use `pip`:

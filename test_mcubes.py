@@ -72,3 +72,38 @@ def test_invalid_input():
 
     with pytest.raises(Exception):
         mcubes.marching_cubes_func((-1.5, -1.5, -1.5), (1.5, 1.5), 10, 10, 10, func, 0)
+
+def test_cuda_mc():
+    x, y, z = np.mgrid[:100, :100, :100]
+    u = (x - 50)**2 + (y - 50)**2 + (z - 50)**2 - 25**2
+
+    try:
+        from lib import mcubes_cu
+        import time
+    except Exception as e:
+        print(e)
+        print('cuda not available')
+        return      
+    
+    start_time = time.time()
+    vert, faces = mcubes.marching_cubes(u, 0.0)
+    end_time = time.time()
+    print(vert.shape, faces.shape)
+    print("duration: ", end_time-start_time, "s")
+    mcubes.export_obj(vert, faces, "test.obj")
+
+    start_time = time.time()
+    vert, faces = mcubes_cu.marching_cubes(u, 0.0)
+    end_time = time.time()
+    print(vert.shape, faces.shape)
+    print("duration: ", end_time-start_time, "s")
+    mcubes.export_obj(vert, faces, "test_cu.obj")
+
+    # mcubes.export_obj(vertices1, triangles1, "output/test_cu.obj")
+    
+    #vertices2, triangles2 = mcubes.marching_cubes(u, 0.0)
+    #assert_allclose(vertices1, vertices2)
+
+# only test cuda part; use pytest for full test
+if __name__ =='__main__':
+    test_cuda_mc()

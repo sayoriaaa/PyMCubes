@@ -159,3 +159,6 @@ dmypy.json
 .pyre/
 
 # End of https://www.gitignore.io/api/osx,linux,python
+
+# my test
+*.obj
