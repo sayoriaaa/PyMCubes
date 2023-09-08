@@ -38,6 +38,8 @@ vertices, triangles = lib.mcubes_cu.marching_cubes(u, 0)
 ```
 来调用该功能
 
+注：该函数默认消除triangle soup! 你可以在历史版本里找到直接生成triangle soup的代码
+
 #### PBM的CUDA加速
 
 基于论文*Parallel Marching Blocks: A Practical Isosurfacing Algorithm for Large Data on Many-Core Architectures*对Marching Cubes算法进行加速
@@ -52,7 +54,11 @@ vertices, triangles = lib.mcubes_cu.PBM(u, 0)
 ```
 来调用该功能
 
+####
 
+参考资料：
+ - https://forums.developer.nvidia.com/t/algorithm-to-remove-shared-vertices/17142
+ - https://thrust.github.io/doc/group__vectorized__binary__search_ga04b5a67cd0daf7be4b35c2bc75d22bee.html
 ## Installation
 
 Use `pip`:

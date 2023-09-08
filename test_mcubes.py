@@ -97,6 +97,8 @@ def test_cuda_mc():
     end_time = time.time()
     print(vert.shape, faces.shape)
     print("duration: ", end_time-start_time, "s")
+    print(vert)
+    print(faces)
     mcubes.export_obj(vert, faces, "test_cu.obj")
 
     # mcubes.export_obj(vertices1, triangles1, "output/test_cu.obj")

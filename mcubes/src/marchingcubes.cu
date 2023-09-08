@@ -10,6 +10,8 @@
 
 #include <thrust/device_vector.h>
 #include <thrust/scan.h>
+#include <thrust/sort.h>
+#include <thrust/binary_search.h>
 
 extern int mc::edge_table[256];
 extern int mc::triangle_table[256][16];
@@ -188,7 +190,7 @@ __device__ float3 vertexInterp(float isolevel, float3 p0, float3 p1, float f0,
 // generate triangles for each voxel using marching cubes
 // interpolates normals from field function
 __global__ void generateTriangles_kernel(
-    float *pos, uint *tri, uint *compactedVoxelArray, uint *numVertsScanned,
+    float3 *pos, uint *compactedVoxelArray, uint *numVertsScanned,
     double *d_field, uint3 gridSize, double isoValue, uint activeVoxels, 
     cudaTextureObject_t triTex, cudaTextureObject_t numVertsTex) {
 
@@ -274,15 +276,22 @@ __global__ void generateTriangles_kernel(
         int edge = tex1Dfetch<int>(triTex, cubeindex * 16 + i);
         int index = numVertsScanned[voxel] + i;
 
-        pos[3*index] = vertlist[edge].x;
-        pos[3*index+1] = vertlist[edge].y;
-        pos[3*index+2] = vertlist[edge].z;
-
-        tri[index] = index; //trivial
-
-        //if (index < maxVerts) pos[index] = make_float3(vertlist[edge]);
+        pos[index].x = vertlist[edge].x;
+        pos[index].y = vertlist[edge].y;
+        pos[index].z = vertlist[edge].z;
     }
 }
+
+
+struct CompareFloat3 {
+    __host__ __device__
+    bool operator()(const float3& a, const float3& b) {
+        if (a.x != b.x) return a.x < b.x;
+        if (a.y != b.y) return a.y < b.y;
+        return a.z < b.z;
+    }
+};
+
 
 py::tuple marching_cubes(py::array_t<double>& F, double isovalue){
 /*
@@ -360,10 +369,10 @@ py::tuple marching_cubes(py::array_t<double>& F, double isovalue){
     cudaDeviceSynchronize();
 
     // 2.0 initial cuda memory
-    float *d_pos = 0;
-    uint *d_tri = 0;
-    cudaMalloc((void **)&d_pos, sizeof(float) * totalVerts * 3);
-    cudaMalloc((void **)&d_tri, sizeof(uint) * totalVerts);
+    float3 *d_pos = 0;
+    int *d_tri = 0;
+    cudaMalloc((void **)&d_pos, sizeof(float3) * totalVerts);
+    cudaMalloc((void **)&d_tri, sizeof(int) * totalVerts);
 
     // 2.1 assign threads
     dim3 grid2((int)ceil(activeVoxels / (float)NTHREADS), 1, 1);
@@ -374,20 +383,52 @@ py::tuple marching_cubes(py::array_t<double>& F, double isovalue){
 
     // 2.2 compute 
     generateTriangles_kernel<<<grid, NTHREADS>>>(
-      d_pos, d_tri, d_compVoxelArray, d_voxelVertsScan, 
+      d_pos, d_compVoxelArray, d_voxelVertsScan, 
       d_field, gridSize, isovalue, activeVoxels,
       triTex, numVertsTex);
     cudaDeviceSynchronize();
 
+    // 2.3 deal with triangle soup
+    float3* d_pos_copy = 0;
+    cudaMalloc((void **)&d_pos_copy, sizeof(float3) * totalVerts);
+    cudaMemcpy(d_pos_copy, d_pos, sizeof(float3) * totalVerts, cudaMemcpyDeviceToDevice);
+
+    thrust::sort(thrust::device_ptr<float3>(d_pos_copy), 
+                    thrust::device_ptr<float3>(d_pos_copy+totalVerts));
+    
+    printf("ok\n");
+
+    thrust::device_ptr<float3> unique_end = thrust::unique(thrust::device_ptr<float3>(d_pos_copy), 
+                                                       thrust::device_ptr<float3>(d_pos_copy + totalVerts));
+
+    printf("ok\n");
+    int unique_size = unique_end - thrust::device_ptr<float3>(d_pos_copy);
+    printf("ok\n");
+    thrust::lower_bound(thrust::device_ptr<float3>(d_pos_copy), 
+                        unique_end, 
+                        thrust::device_ptr<float3>(d_pos), 
+                        thrust::device_ptr<float3>(d_pos + totalVerts),         
+                        thrust::device_ptr<int>(d_tri),
+                        CompareFloat3());
+
+    printf("ok\n");
+
+    //thrust::device_ptr<int> result_ptr = thrust::device_pointer_cast(indices);
+    //thrust::binary_search(d_pos, d_pos + totalVerts, d_pos_copy, d_pos_copy + unique_size, 
+    //                    thrust::device_ptr<int>(d_tri));
+
     // 2.3 copy to host
-    py::array_t<float> pos = py::array_t<float>({(int)totalVerts, 3});
+    py::array_t<float> pos = py::array_t<float>({unique_size, 3}); // float3 -> float
     py::array_t<int> tri = py::array_t<int>({(int)totalVerts/3, 3});
+
+    printf("ok\n");
 
     float* pos_ptr = static_cast<float*>(pos.request().ptr);
     int* tri_ptr = static_cast<int*>(tri.request().ptr);
-    cudaMemcpy(pos_ptr, d_pos, sizeof(float) * totalVerts * 3, cudaMemcpyDeviceToHost);
+    cudaMemcpy(pos_ptr, d_pos_copy, sizeof(float3) * unique_size, cudaMemcpyDeviceToHost);
     cudaMemcpy(tri_ptr, d_tri, sizeof(int) * totalVerts, cudaMemcpyDeviceToHost);
 
+    printf("ok\n");
     // 2.x free cuda memory
     cudaFree(d_voxelVerts);
     cudaFree(d_voxelVertsScan);
@@ -395,6 +436,10 @@ py::tuple marching_cubes(py::array_t<double>& F, double isovalue){
     cudaFree(d_voxelOccupiedScan);
     cudaFree(d_compVoxelArray);
     cudaFree(d_field);
+
+    cudaFree(d_pos);
+    cudaFree(d_tri);
+    cudaFree(d_pos_copy);
 
     // 2.x+1 free tables
     cudaDestroyTextureObject(triTex);
